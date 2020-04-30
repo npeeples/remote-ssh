@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+
+region=$1
+[ -z "$region" ] && region=us-east-1
+
+list=$( aws --profile saml ec2 describe-instances --region $region --output json )
+if [ $? -ne 0 ]; then
+  echo 'could not get list of servers, check if saml logged in'
+  exit 1
+fi
+
+choices=$( echo $list | jq -r '[.Reservations | .[] | .Instances | .[] | {InstanceId: .InstanceId, State: .State, SubnetId: .SubnetId, VpcId: .VpcId, Name: (.Tags[]|select(.Key=="Name")|.Value), PrivateIp: .PrivateIpAddress}] | map([.Name, .PrivateIp] | join(",")) | sort | join("|")' )
+arrc=(${choices//|/ })
+PS3="Please enter your choice: "
+select answer in "${arrc[@]}"; do
+  for item in "${arrc[@]}"; do
+    if [[ $item == $answer ]]; then
+      break 2
+    fi
+  done
+done
+
+echo sshrc -i ~/.ssh/volly-ma-prod ec2-user@${answer#*,} -t "sudo script -q -c 'screen -dR -c /tmp/.np.screenrc np' /dev/null"
+sshrc -i ~/.ssh/volly-ma-prod ec2-user@${answer#*,} -t "sudo script -q -c 'screen -dR -c /tmp/.np.screenrc np' /dev/null"
+

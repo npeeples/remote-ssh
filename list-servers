@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+region=$1
+[ -z "$region" ] && region=us-east-1
+
+list=$( aws --profile saml ec2 describe-instances --region $region --output json )
+if [ $? -ne 0 ]; then
+  echo 'could not get list of servers, check if saml logged in'
+  exit 1
+fi
+
+echo $list | jq -r '
+    [
+        .Reservations
+        | .[]
+        | .Instances
+        | .[]
+        | select(.State.Name != "Terminated")
+        | {
+            Name: ( .Tags[] | select(.Key=="Name") | .Value ),
+            PrivateIp: .PrivateIpAddress,
+            InstanceId: .InstanceId,
+            State: .State.Name,
+            SubnetId: .SubnetId,
+            VpcId: .VpcId
+        }
+    ]
+    | sort_by( .Name )
+    | [.[] | with_entries( .key |= ascii_downcase )]
+    | (.[0] | keys_unsorted | @tsv), (.[]|.|map(.) | @tsv)' | column -t
+
